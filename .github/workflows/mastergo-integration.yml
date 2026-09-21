@@ -1,0 +1,74 @@
+name: MasterGo tested integration
+
+on:
+  push:
+    branches: ['review/mastergo-runtime-audit-20260922']
+    paths: ['.review/**', '.github/workflows/mastergo-integration.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  runtime:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - name: Preserve exact tracked bytes
+        shell: bash
+        run: git config --global core.autocrlf false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          path: tooling
+          persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: bbc96ff6dcf0fbbeb6100eea94e543fbf4a61ade
+          path: source
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - name: Apply checksum-pinned patch
+        shell: bash
+        run: python tooling/.review/apply.py source
+      - name: Complete runtime suite
+        shell: pwsh
+        run: |
+          & node source/plugins/mastergo-wpf-transcoder/skills/mastergo-to-wpf/scripts/test-runtime.mjs 2>&1 | Tee-Object -FilePath runtime.log
+          exit $LASTEXITCODE
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: runtime-${{ matrix.os }}
+          path: runtime.log
+          retention-days: 7
+
+  publish:
+    needs: runtime
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          path: tooling
+          persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: bbc96ff6dcf0fbbeb6100eea94e543fbf4a61ade
+          path: source
+          persist-credentials: true
+      - name: Apply already tested exact source tree
+        run: python tooling/.review/apply.py source
+      - name: Publish candidate without executing repository code
+        working-directory: source
+        run: |
+          git config user.name soraros
+          git config user.email soraros@users.noreply.github.com
+          git commit -m 'fix(mastergo): enforce capture, resume, and stage-consumption boundaries' -m 'Preserve concurrent PR work; validate the exact source tree on Linux and Windows before publication. Add a shared runtime suite and full 12-stage fixtures with only acquisition stubbed.'
+          git push origin HEAD:refs/heads/review/mastergo-tested-candidate-20260922
