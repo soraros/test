@@ -94,9 +94,9 @@ try {
 
     # 4) 首次运行缺失的身份不得在续跑里补写。
     $case4 = New-Fixture -Name 'backfill' -FrozenDesignPageName ''
-    $out4 = Invoke-Resume -Project $case4
+    $out4 = Invoke-Resume -Project $case4 -Extra @('-DesignPageName', '新名称')
     Assert-True ($out4 -match 'identity.designPageName') '补写首次缺失的身份必须被拒绝'
-    Assert-True ($out4 -match '补值') '拒绝文案必须点明"补值"'
+    Assert-True ($out4 -match '续跑不能更改') '拒绝文案必须点明"补值"'
 
     # 5) 续跑回放：项目登记表被改动（ui F8 → F9）也不影响正在续跑的这一次。
     $case5 = New-Fixture -Name 'registry-edited' -FrozenUi 'F8' -RegistryUi 'F9'
@@ -105,11 +105,11 @@ try {
     Assert-True ($out5 -match 'LayerId: layer-A') '续跑必须回放冻结的 layerId'
     Assert-True ($out5 -notmatch '续跑不能') '改动项目登记表不应再打断续跑'
 
-    # 6) 边界（与 §7 文档同口径）：删掉项目登记表条目后身份取不到值 → 先报「缺少…」，不静默续跑。
+    # 6) 删除项目登记表条目不影响已登记运行的身份回放。
     $case6 = New-Fixture -Name 'entry-removed' -DropRegistryPage
     $out6 = Invoke-Resume -Project $case6
-    Assert-True ($out6 -match '缺少 MasterGo 文件 id') '删除登记表条目后应先报缺少身份，而不是静默继续'
-    Assert-True ($out6 -notmatch '缺少 Bundle 审计') '删除登记表条目后不应走到第 11 步'
+    Assert-True ($out6 -match '缺少 Bundle 审计') '删除登记表条目后仍须使用运行身份并到达门禁步骤'
+    Assert-True ($out6 -notmatch '缺少 MasterGo 文件 id') '续跑不得重新要求项目登记表提供 fileId'
 
     # 7) 同一情形下显式传回身份 → 可以续跑（这是 §7 给出的处置）。
     $out7 = Invoke-Resume -Project $case6 -Extra @('-FileId', 'file-A', '-LayerId', 'layer-A', '-Ui', 'F8', '-DesignPageName', '设计页 A')
