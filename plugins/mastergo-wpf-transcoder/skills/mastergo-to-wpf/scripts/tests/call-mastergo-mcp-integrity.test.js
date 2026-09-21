@@ -44,7 +44,11 @@ input.on("line", (line) => {
     }
   }
   const bytes = Buffer.from(JSON.stringify({ jsonrpc: "2.0", id: message.id, result }) + "\\n");
-  if (message.method === "tools/call" && config.splitCharacter) {
+  const page = Number((message.params && message.params.arguments && message.params.arguments.page) || 0);
+  const delay = message.method === "tools/call" && config.delayPages ? (config.delayPages[page] || 0) : 0;
+  if (delay) {
+    setTimeout(() => process.stdout.write(bytes), delay);
+  } else if (message.method === "tools/call" && config.splitCharacter) {
     const cut = bytes.indexOf(Buffer.from(config.splitCharacter)) + 1;
     if (cut < 1) throw new Error("test character not found");
     process.stdout.write(bytes.subarray(0, cut));
@@ -181,4 +185,28 @@ test("getDsl business error preserves existing capture and does not expose its m
   assert.equal(result.status, 5);
   assert.equal(result.captured, result.previous);
   assert.equal((result.stdout + result.stderr).includes(marker), false);
+});
+
+// Preserve upstream 1.0.247's delayed-page regression alongside the indefinitely hung-page case.
+test("extractSvg pagination keeps each page request under the timeout window", (t) => {
+  const page0 = { totalCount: 2, count: 1, page: 0, pageSize: 1, hasMore: true, svgs: [{ id: "a" }] };
+  const page1 = { totalCount: 2, count: 1, page: 1, pageSize: 1, hasMore: false, svgs: [{ id: "b" }] };
+  const result = captureWithStub(t, {
+    tool: "extractSvg", pageSize: 1, timeoutMs: 400,
+    pages: { 0: page0, 1: page1 }, delayPages: { 1: 2000 }
+  });
+  assert.equal(result.status, 3, "A delayed second page must fail with the timeout code");
+  assert.match(result.stderr, /超时/);
+  assert.equal(result.captured, result.previous);
+});
+
+test("successful pagination renews the timeout for each request", (t) => {
+  const page0 = { totalCount: 2, count: 1, page: 0, hasMore: true, svgs: [{ id: "a" }] };
+  const page1 = { totalCount: 2, count: 1, page: 1, hasMore: false, svgs: [{ id: "b" }] };
+  const result = captureWithStub(t, {
+    tool: "extractSvg", pageSize: 1, timeoutMs: 700,
+    pages: { 0: page0, 1: page1 }, delayPages: { 0: 450, 1: 450 }
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(JSON.parse(result.captured).svgs.map((svg) => svg.id), ["a", "b"]);
 });

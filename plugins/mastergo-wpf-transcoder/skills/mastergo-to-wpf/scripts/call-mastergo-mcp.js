@@ -112,6 +112,7 @@ function send(message) {
 }
 
 function request(method, params) {
+  armTimeout();
   const id = nextId;
   nextId += 1;
   return new Promise(function (resolve, reject) {
@@ -146,11 +147,16 @@ child.stdout.on("data", function (chunk) {
 });
 
 const timeoutMs = Number(args.timeoutMs || 240000);
-const timer = setTimeout(function () {
-  console.error("MCP 调用超时 " + timeoutMs + "ms");
-  try { child.kill(); } catch (error) { /* ignore */ }
-  process.exit(3);
-}, timeoutMs);
+// A fresh timeout budget for each RPC, including every SVG page. Never log server payloads.
+let timer = null;
+function armTimeout() {
+  clearTimeout(timer);
+  timer = setTimeout(function () {
+    console.error("MCP 调用超时 " + timeoutMs + "ms");
+    try { child.kill(); } catch (error) { /* ignore */ }
+    process.exit(3);
+  }, timeoutMs);
+}
 
 // extractSvg 是分页接口（服务端 pageSize 上限 100）：只取第一页会让 >100 个图标的页面静默漏条目。
 // 这里把上限做成显式常量，防御服务端 hasMore 永真的情况（宁可失败，也不无限拉）。
