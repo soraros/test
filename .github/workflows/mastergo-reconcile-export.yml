@@ -1,0 +1,26 @@
+name: MasterGo reconciliation input
+on:
+  push:
+    branches: ['review/mastergo-runtime-audit-20260922']
+    paths: ['.github/workflows/mastergo-reconcile-export.yml']
+permissions:
+  contents: read
+jobs:
+  source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: bbc96ff6dcf0fbbeb6100eea94e543fbf4a61ade
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Export tracked source and history
+        run: |
+          git branch review-export HEAD
+          git bundle create "$RUNNER_TEMP/review.bundle" review-export
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mastergo-reconcile-bundle
+          path: ${{ runner.temp }}/review.bundle
+          retention-days: 1
